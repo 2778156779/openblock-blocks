@@ -159,6 +159,15 @@ Blockly.ScratchBlocks.VerticalExtensions.PROCEDURE_DEF_CONTEXTMENU = {
   customContextMenu: function(menuOptions) {
     // Add the edit option at the end.
     menuOptions.push(Blockly.Procedures.makeEditOption(this));
+    menuOptions.push({
+      enabled: true,
+      text: this.isCollapsed() ?
+        (Blockly.Msg.YGROBOT_EXPAND_PROCEDURE || 'Expand definition') :
+        (Blockly.Msg.YGROBOT_COLLAPSE_PROCEDURE || 'Collapse definition'),
+      callback: function() {
+        this.setCollapsed(!this.isCollapsed());
+      }.bind(this)
+    });
 
     // Find the delete option and update its callback to be specific to
     // functions.
@@ -208,6 +217,7 @@ Blockly.ScratchBlocks.VerticalExtensions.PROCEDURE_CALL_CONTEXTMENU = {
    */
   customContextMenu: function(menuOptions) {
     menuOptions.push(Blockly.Procedures.makeEditOption(this));
+    menuOptions.push(Blockly.Procedures.makeShowDefinitionOption(this));
   }
 };
 

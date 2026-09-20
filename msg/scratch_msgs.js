@@ -881,6 +881,8 @@ Blockly.ScratchMsgs.locales["zh-cn"] =
     "REDO": "重做",
     "EDIT_PROCEDURE": "编辑",
     "SHOW_PROCEDURE_DEFINITION": "查看定义",
+    "YGROBOT_COLLAPSE_PROCEDURE": "折叠定义",
+    "YGROBOT_EXPAND_PROCEDURE": "展开定义",
     "WORKSPACE_COMMENT_DEFAULT_TEXT": "说些什么……",
     "COLOUR_HUE_LABEL": "颜色",
     "COLOUR_SATURATION_LABEL": "饱和度",

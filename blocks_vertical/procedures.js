@@ -30,6 +30,29 @@ goog.require('Blockly.Colours');
 goog.require('Blockly.constants');
 goog.require('Blockly.ScratchBlocks.VerticalExtensions');
 
+/**
+ * The default colour for custom procedures created before YGrobot added
+ * per-procedure colours. Keeping a fallback makes existing projects render
+ * exactly as they did before this feature.
+ * @const {string}
+ */
+Blockly.ScratchBlocks.ProcedureUtils.DEFAULT_COLOUR = '#FF6680';
+
+/**
+ * Read and apply a procedure colour stored on its mutation XML.
+ * @param {!Element} xmlElement Procedure mutation XML.
+ * @this Blockly.Block
+ * @private
+ */
+Blockly.ScratchBlocks.ProcedureUtils.applyColourFromMutation_ = function(
+    xmlElement) {
+  this.procedureColour_ = xmlElement.getAttribute('colour') ||
+      Blockly.ScratchBlocks.ProcedureUtils.DEFAULT_COLOUR;
+  // Blockly derives readable secondary and tertiary shades when only the
+  // primary colour is supplied.
+  this.setColour(this.procedureColour_);
+};
+
 // Serialization and deserialization.
 
 /**
@@ -43,6 +66,11 @@ Blockly.ScratchBlocks.ProcedureUtils.callerMutationToDom = function() {
   container.setAttribute('proccode', this.procCode_);
   container.setAttribute('argumentids', JSON.stringify(this.argumentIds_));
   container.setAttribute('warp', JSON.stringify(this.warp_));
+  container.setAttribute('colour', this.procedureColour_ ||
+      Blockly.ScratchBlocks.ProcedureUtils.DEFAULT_COLOUR);
+  if (this.procedureOrder_ !== undefined) {
+    container.setAttribute('order', this.procedureOrder_);
+  }
   return container;
 };
 
@@ -58,6 +86,9 @@ Blockly.ScratchBlocks.ProcedureUtils.callerDomToMutation = function(xmlElement) 
       JSON.parse(xmlElement.getAttribute('generateshadows'));
   this.argumentIds_ = JSON.parse(xmlElement.getAttribute('argumentids'));
   this.warp_ = JSON.parse(xmlElement.getAttribute('warp'));
+  var callerOrder = xmlElement.getAttribute('order');
+  this.procedureOrder_ = callerOrder === null ? undefined : Number(callerOrder);
+  this.applyColourFromMutation_(xmlElement);
   this.updateDisplay_();
 };
 
@@ -82,6 +113,11 @@ Blockly.ScratchBlocks.ProcedureUtils.definitionMutationToDom = function(
   container.setAttribute('argumentdefaults',
       JSON.stringify(this.argumentDefaults_));
   container.setAttribute('warp', JSON.stringify(this.warp_));
+  container.setAttribute('colour', this.procedureColour_ ||
+      Blockly.ScratchBlocks.ProcedureUtils.DEFAULT_COLOUR);
+  if (this.procedureOrder_ !== undefined) {
+    container.setAttribute('order', this.procedureOrder_);
+  }
   return container;
 };
 
@@ -102,6 +138,10 @@ Blockly.ScratchBlocks.ProcedureUtils.definitionDomToMutation = function(xmlEleme
   this.displayNames_ = JSON.parse(xmlElement.getAttribute('argumentnames'));
   this.argumentDefaults_ = JSON.parse(
       xmlElement.getAttribute('argumentdefaults'));
+  var definitionOrder = xmlElement.getAttribute('order');
+  this.procedureOrder_ = definitionOrder === null ? undefined :
+      Number(definitionOrder);
+  this.applyColourFromMutation_(xmlElement);
   this.updateDisplay_();
   if (this.updateArgumentReporterNames_) {
     this.updateArgumentReporterNames_(prevArgIds, prevDisplayNames);

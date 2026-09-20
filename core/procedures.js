@@ -95,7 +95,8 @@ Blockly.Procedures.allProcedureMutations = function(root) {
 };
 
 /**
- * Sorts an array of procedure definition mutations alphabetically.
+ * Sorts an array of procedure definition mutations by the user's explicit
+ * order, falling back to the former alphabetical order for older projects.
  * (Does not mutate the given array.)
  * @param {!Array.<Element>} mutations Array of mutation xml elements.
  * @return {!Array.<Element>} Sorted array of mutation xml elements.
@@ -105,6 +106,20 @@ Blockly.Procedures.sortProcedureMutations_ = function(mutations) {
   var newMutations = mutations.slice();
 
   newMutations.sort(function(a, b) {
+    var orderAttributeA = a.getAttribute('order');
+    var orderAttributeB = b.getAttribute('order');
+    var orderA = Number(orderAttributeA);
+    var orderB = Number(orderAttributeB);
+    var hasOrderA = orderAttributeA !== null && !isNaN(orderA);
+    var hasOrderB = orderAttributeB !== null && !isNaN(orderB);
+
+    if (hasOrderA && hasOrderB && orderA != orderB) {
+      return orderA - orderB;
+    }
+    if (hasOrderA != hasOrderB) {
+      return hasOrderA ? -1 : 1;
+    }
+
     var procCodeA = a.getAttribute('proccode');
     var procCodeB = b.getAttribute('proccode');
 
@@ -405,6 +420,11 @@ Blockly.Procedures.createProcedureDefCallback_ = function(workspace) {
 Blockly.Procedures.createProcedureCallbackFactory_ = function(workspace) {
   return function(mutation) {
     if (mutation) {
+      // New procedures are appended to the My Blocks flyout. Existing
+      // procedures keep their persisted positions.
+      if (!mutation.hasAttribute('order')) {
+        mutation.setAttribute('order', Blockly.Procedures.getNextOrder_(workspace));
+      }
       var blockText = '<xml>' +
           '<block type="procedures_definition">' +
           '<statement name="custom_block">' +
@@ -431,6 +451,25 @@ Blockly.Procedures.createProcedureCallbackFactory_ = function(workspace) {
       Blockly.Events.setGroup(false);
     }
   };
+};
+
+/**
+ * Return an order value after every existing custom procedure.
+ * @param {!Blockly.Workspace} workspace Workspace containing procedures.
+ * @return {number} The next sort position.
+ * @private
+ */
+Blockly.Procedures.getNextOrder_ = function(workspace) {
+  var mutations = Blockly.Procedures.allProcedureMutations(workspace);
+  var highestOrder = -1;
+  for (var i = 0; i < mutations.length; i++) {
+    var orderAttribute = mutations[i].getAttribute('order');
+    var order = Number(orderAttribute);
+    if (orderAttribute !== null && !isNaN(order)) {
+      highestOrder = Math.max(highestOrder, order);
+    }
+  }
+  return highestOrder + 1;
 };
 
 /**
@@ -524,8 +563,17 @@ Blockly.Procedures.makeEditOption = function(block) {
  * @private
  */
 Blockly.Procedures.showProcedureDefCallback_ = function(block) {
-  alert('TODO(#1136): implement showing procedure definition (procCode was "' +
-      block.procCode_ + '")');
+  var workspace = block.workspace.isFlyout ?
+      block.workspace.targetWorkspace : block.workspace;
+  var definition = Blockly.Procedures.getDefineBlock(
+      block.getProcCode(), workspace);
+  if (!definition) {
+    return;
+  }
+  if (definition.isCollapsed()) {
+    definition.setCollapsed(false);
+  }
+  workspace.centerOnBlock(definition.id);
 };
 
 /**
