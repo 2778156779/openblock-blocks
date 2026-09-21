@@ -13,6 +13,27 @@ var DEFAULT_COLOUR = '#FF6680';
 module.exports = function(Blockly) {
   var procedureUtils = Blockly.ScratchBlocks.ProcedureUtils;
 
+  /**
+   * The procedure body is connected below the prototype block inside the
+   * definition's statement input. Blockly's ordinary collapse operation hides
+   * the prototype but not the separate SVG groups of its downstream stack.
+   * Keep those groups in sync so a folded definition hides its whole body.
+   */
+  var setProcedureDefinitionCollapsed = function(definition, collapsed) {
+    definition.setCollapsed(collapsed);
+    var input = definition.getInput('custom_block');
+    var prototype = input && input.connection && input.connection.targetBlock();
+    if (!prototype) return;
+    var descendants = prototype.getDescendants(false);
+    for (var i = 0; i < descendants.length; i++) {
+      var descendant = descendants[i];
+      var svgRoot = descendant.getSvgRoot && descendant.getSvgRoot();
+      if (svgRoot) svgRoot.style.display = collapsed ? 'none' : 'block';
+      if (collapsed) descendant.rendered = false;
+    }
+    if (!collapsed && definition.rendered) definition.render();
+  };
+
   var callerMutationToDom = procedureUtils.callerMutationToDom;
   procedureUtils.callerMutationToDom = function() {
     var mutation = callerMutationToDom.call(this);
@@ -140,7 +161,7 @@ module.exports = function(Blockly) {
       block.workspace.targetWorkspace : block.workspace;
     var definition = Blockly.Procedures.getDefineBlock(block.getProcCode(), workspace);
     if (!definition) return;
-    if (definition.isCollapsed()) definition.setCollapsed(false);
+    if (definition.isCollapsed()) setProcedureDefinitionCollapsed(definition, false);
     workspace.centerOnBlock(definition.id);
   };
 
@@ -153,7 +174,7 @@ module.exports = function(Blockly) {
       enabled: true,
       text: this.isCollapsed() ? '展开定义' : '折叠定义',
       callback: function() {
-        this.setCollapsed(!this.isCollapsed());
+        setProcedureDefinitionCollapsed(this, !this.isCollapsed());
       }.bind(this)
     });
   };
