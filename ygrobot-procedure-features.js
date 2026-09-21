@@ -34,19 +34,28 @@ module.exports = function(Blockly) {
     Blockly.Block.prototype.setCollapsed.call(this, collapsed);
     var input = this.getInput('custom_block');
     var prototype = input && input.connection && input.connection.targetBlock();
-    var bodyConnection = prototype && prototype.nextConnection;
-    if (!bodyConnection) return;
-
-    var renderList = collapsed ? [] : bodyConnection.unhideAll();
-    if (collapsed) bodyConnection.hideAll();
-    var body = bodyConnection.targetBlock();
-    var descendants = body ? body.getDescendants(false) : [];
-    for (var i = 0; i < descendants.length; i++) {
-      var svgRoot = descendants[i].getSvgRoot && descendants[i].getSvgRoot();
-      if (svgRoot) svgRoot.style.display = collapsed ? 'none' : 'block';
+    // In this Blockly version, users can attach a definition body below the
+    // definition root or below its prototype. Cover both connection paths.
+    var bodyConnections = [this.nextConnection];
+    if (prototype) bodyConnections.push(prototype.nextConnection);
+    var renderList = [];
+    for (var i = 0; i < bodyConnections.length; i++) {
+      var bodyConnection = bodyConnections[i];
+      if (!bodyConnection || !bodyConnection.targetBlock()) continue;
+      if (collapsed) {
+        bodyConnection.hideAll();
+      } else {
+        renderList.push.apply(renderList, bodyConnection.unhideAll());
+      }
+      var body = bodyConnection.targetBlock();
+      var descendants = body.getDescendants(false);
+      for (var j = 0; j < descendants.length; j++) {
+        var svgRoot = descendants[j].getSvgRoot && descendants[j].getSvgRoot();
+        if (svgRoot) svgRoot.style.display = collapsed ? 'none' : 'block';
+      }
     }
     if (!collapsed && this.rendered) {
-      for (var j = 0; j < renderList.length; j++) renderList[j].render();
+      for (var k = 0; k < renderList.length; k++) renderList[k].render();
       this.render();
     }
   };
