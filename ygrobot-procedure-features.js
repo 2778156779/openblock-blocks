@@ -310,8 +310,10 @@ module.exports = function(Blockly) {
     var xmlList = flyoutCategory.call(this, workspace);
     var button = document.createElement('button');
     var callbackKey = 'YGROBOT_TOGGLE_PROCEDURE_ORDER_LOCK';
+    // The icon shows the current state (rather than the action): closed lock
+    // means normal drag-to-workspace mode, open lock means list sort mode.
     button.setAttribute('text', workspace.procedureOrderLocked_ ?
-      '解锁积木排序' : '锁定积木排序');
+      '🔒 排序已锁定' : '🔓 拖动排序中');
     button.setAttribute('callbackKey', callbackKey);
     workspace.registerButtonCallback(callbackKey, function() {
       workspace.procedureOrderLocked_ = !workspace.procedureOrderLocked_;
