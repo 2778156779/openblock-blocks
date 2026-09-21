@@ -16,21 +16,39 @@ module.exports = function(Blockly) {
   /**
    * Make every collapse entry point behave correctly for a procedure
    * definition, including Blockly's built-in "Collapse Block" command.
-   * The normal implementation hides only the direct input child; procedure
-   * bodies continue below that child as separate SVG groups.
+   * A procedure's prototype is its visible header: it contains the name and
+   * shape that identify the definition. Only the stack attached after that
+   * prototype is the foldable body.
    */
   var originalSetCollapsed = Blockly.BlockSvg.prototype.setCollapsed;
   Blockly.BlockSvg.prototype.setCollapsed = function(collapsed) {
-    originalSetCollapsed.call(this, collapsed);
-    if (this.type !== Blockly.PROCEDURES_DEFINITION_BLOCK_TYPE) return;
-    var descendants = this.getDescendants(false);
+    if (this.type !== Blockly.PROCEDURES_DEFINITION_BLOCK_TYPE) {
+      originalSetCollapsed.call(this, collapsed);
+      return;
+    }
+    if (this.collapsed_ === collapsed) return;
+
+    // Store the normal Blockly collapsed state so undo/save/load continue to
+    // work, but do not hide the definition's header input or replace its name
+    // with Blockly's abbreviated collapsed label.
+    Blockly.Block.prototype.setCollapsed.call(this, collapsed);
+    var input = this.getInput('custom_block');
+    var prototype = input && input.connection && input.connection.targetBlock();
+    var bodyConnection = prototype && prototype.nextConnection;
+    if (!bodyConnection) return;
+
+    var renderList = collapsed ? [] : bodyConnection.unhideAll();
+    if (collapsed) bodyConnection.hideAll();
+    var body = bodyConnection.targetBlock();
+    var descendants = body ? body.getDescendants(false) : [];
     for (var i = 0; i < descendants.length; i++) {
-      var descendant = descendants[i];
-      if (descendant === this) continue;
-      var svgRoot = descendant.getSvgRoot && descendant.getSvgRoot();
+      var svgRoot = descendants[i].getSvgRoot && descendants[i].getSvgRoot();
       if (svgRoot) svgRoot.style.display = collapsed ? 'none' : 'block';
     }
-    if (!collapsed && this.rendered) this.render();
+    if (!collapsed && this.rendered) {
+      for (var j = 0; j < renderList.length; j++) renderList[j].render();
+      this.render();
+    }
   };
 
   var setProcedureDefinitionCollapsed = function(definition, collapsed) {
