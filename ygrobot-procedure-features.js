@@ -181,6 +181,110 @@ module.exports = function(Blockly) {
     workspace.refreshToolboxSelection_();
   };
 
+  /**
+   * Move one procedure to a precise position in the flyout order.  Unlike the
+   * context-menu up/down action this supports a drag drop target, but it uses
+   * the same `order` field so the result is saved with the project.
+   */
+  Blockly.Procedures.reorderProcedure_ = function(workspace, procCode,
+      targetProcCode, insertAfter) {
+    if (workspace.procedureOrderLocked_ || procCode === targetProcCode) return;
+    var mutations = Blockly.Procedures.sortProcedureMutations_(
+      Blockly.Procedures.allProcedureMutations(workspace));
+    var source = null;
+    var remaining = [];
+    for (var i = 0; i < mutations.length; i++) {
+      if (mutations[i].getAttribute('proccode') === procCode) {
+        source = mutations[i];
+      } else {
+        remaining.push(mutations[i]);
+      }
+    }
+    if (!source) return;
+    var targetIndex = -1;
+    for (var j = 0; j < remaining.length; j++) {
+      if (remaining[j].getAttribute('proccode') === targetProcCode) {
+        targetIndex = j;
+        break;
+      }
+    }
+    if (targetIndex < 0) return;
+    remaining.splice(targetIndex + (insertAfter ? 1 : 0), 0, source);
+    remaining.forEach(function(mutation, order) {
+      var prototype = Blockly.Procedures.getPrototypeBlock(
+        mutation.getAttribute('proccode'), workspace);
+      if (prototype) prototype.procedureOrder_ = order;
+    });
+    workspace.refreshToolboxSelection_();
+  };
+
+  var findProcedureDropTarget = function(flyout, event) {
+    var flyoutSvg = flyout.svgGroup_;
+    if (!flyoutSvg) return null;
+    var flyoutRect = flyoutSvg.getBoundingClientRect();
+    if (event.clientX < flyoutRect.left || event.clientX > flyoutRect.right ||
+        event.clientY < flyoutRect.top || event.clientY > flyoutRect.bottom) {
+      return null;
+    }
+    var candidates = flyout.workspace_.getTopBlocks(false).filter(function(block) {
+      return block.type === 'procedures_call';
+    });
+    var closest = null;
+    var closestDistance = Infinity;
+    candidates.forEach(function(block) {
+      var root = block.getSvgRoot();
+      if (!root) return;
+      var rect = root.getBoundingClientRect();
+      var centre = (rect.top + rect.bottom) / 2;
+      var distance = Math.abs(event.clientY - centre);
+      if (distance < closestDistance) {
+        closest = {block: block, insertAfter: event.clientY > centre};
+        closestDistance = distance;
+      }
+    });
+    return closest;
+  };
+
+  // A normal flyout drag creates a block in the workspace.  While custom
+  // procedure sorting is unlocked, intercept only procedure call blocks and
+  // use their drop position inside the flyout to update the saved order.
+  var originalFlyoutBlockMouseDown = Blockly.Flyout.prototype.blockMouseDown_;
+  Blockly.Flyout.prototype.blockMouseDown_ = function(block) {
+    var flyout = this;
+    var originalHandler = originalFlyoutBlockMouseDown.call(this, block);
+    return function(event) {
+      var workspace = flyout.targetWorkspace_;
+      var canReorder = block.type === 'procedures_call' && workspace &&
+        !workspace.procedureOrderLocked_;
+      if (!canReorder) return originalHandler(event);
+
+      var startX = event.clientX;
+      var startY = event.clientY;
+      var hasMoved = false;
+      var root = block.getSvgRoot();
+      if (root) root.style.opacity = '0.55';
+      var onMove = function(moveEvent) {
+        if (Math.abs(moveEvent.clientX - startX) > 4 ||
+            Math.abs(moveEvent.clientY - startY) > 4) hasMoved = true;
+        moveEvent.preventDefault();
+      };
+      var onUp = function(upEvent) {
+        document.removeEventListener('mousemove', onMove, true);
+        document.removeEventListener('mouseup', onUp, true);
+        if (root) root.style.opacity = '';
+        if (!hasMoved) return;
+        var target = findProcedureDropTarget(flyout, upEvent);
+        if (!target || target.block === block) return;
+        Blockly.Procedures.reorderProcedure_(workspace, block.getProcCode(),
+          target.block.getProcCode(), target.insertAfter);
+      };
+      document.addEventListener('mousemove', onMove, true);
+      document.addEventListener('mouseup', onUp, true);
+      event.preventDefault();
+      event.stopPropagation();
+    };
+  };
+
   var flyoutCategory = Blockly.Procedures.flyoutCategory;
   Blockly.Procedures.flyoutCategory = function(workspace) {
     if (workspace.procedureOrderLocked_ === undefined) {
