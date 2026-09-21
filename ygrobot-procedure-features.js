@@ -262,6 +262,12 @@ module.exports = function(Blockly) {
       var startY = event.clientY;
       var hasMoved = false;
       var root = block.getSvgRoot();
+      // Blockly's flyout background also receives this mouse event. Mark this
+      // source block as temporarily non-draggable so that, even if that
+      // secondary event starts a native Gesture, it cannot create a copy in
+      // the coding workspace while the user is sorting this list.
+      var wasDisabled = block.disabled;
+      block.disabled = true;
       if (root) root.style.opacity = '0.55';
       var onMove = function(moveEvent) {
         if (Math.abs(moveEvent.clientX - startX) > 4 ||
@@ -271,6 +277,7 @@ module.exports = function(Blockly) {
       var onUp = function(upEvent) {
         document.removeEventListener('mousemove', onMove, true);
         document.removeEventListener('mouseup', onUp, true);
+        block.disabled = wasDisabled;
         if (root) root.style.opacity = '';
         if (!hasMoved) return;
         var target = findProcedureDropTarget(flyout, upEvent);
@@ -283,6 +290,21 @@ module.exports = function(Blockly) {
       event.preventDefault();
       event.stopPropagation();
     };
+  };
+
+  // `blockMouseDown_` is the normal entry point above. This gesture-level
+  // guard covers Blockly's background listener too, ensuring that unlocked
+  // procedure entries can never be copied into the coding workspace.
+  var originalFlyoutDrag = Blockly.Gesture.prototype.updateIsDraggingFromFlyout_;
+  Blockly.Gesture.prototype.updateIsDraggingFromFlyout_ = function() {
+    var flyout = this.flyout_;
+    var workspace = flyout && flyout.targetWorkspace_;
+    var block = this.targetBlock_;
+    if (workspace && !workspace.procedureOrderLocked_ && block &&
+        block.type === 'procedures_call') {
+      return false;
+    }
+    return originalFlyoutDrag.call(this);
   };
 
   var flyoutCategory = Blockly.Procedures.flyoutCategory;
