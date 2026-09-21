@@ -258,37 +258,10 @@ module.exports = function(Blockly) {
         !workspace.procedureOrderLocked_;
       if (!canReorder) return originalHandler(event);
 
-      var startX = event.clientX;
-      var startY = event.clientY;
-      var hasMoved = false;
-      var root = block.getSvgRoot();
-      // Blockly's flyout background also receives this mouse event. Mark this
-      // source block as temporarily non-draggable so that, even if that
-      // secondary event starts a native Gesture, it cannot create a copy in
-      // the coding workspace while the user is sorting this list.
-      var wasDisabled = block.disabled;
-      block.disabled = true;
-      if (root) root.style.opacity = '0.55';
-      var onMove = function(moveEvent) {
-        if (Math.abs(moveEvent.clientX - startX) > 4 ||
-            Math.abs(moveEvent.clientY - startY) > 4) hasMoved = true;
-        moveEvent.preventDefault();
-      };
-      var onUp = function(upEvent) {
-        document.removeEventListener('mousemove', onMove, true);
-        document.removeEventListener('mouseup', onUp, true);
-        block.disabled = wasDisabled;
-        if (root) root.style.opacity = '';
-        if (!hasMoved) return;
-        var target = findProcedureDropTarget(flyout, upEvent);
-        if (!target || target.block === block) return;
-        Blockly.Procedures.reorderProcedure_(workspace, block.getProcCode(),
-          target.block.getProcCode(), target.insertAfter);
-      };
-      document.addEventListener('mousemove', onMove, true);
-      document.addEventListener('mouseup', onUp, true);
-      event.preventDefault();
-      event.stopPropagation();
+      // Use Blockly's own gesture lifecycle.  It owns flyout scrolling and
+      // deletion handling, so a parallel document-level mouse listener can
+      // otherwise lose the mouse-up event to Blockly.
+      return originalHandler(event);
     };
   };
 
@@ -305,6 +278,28 @@ module.exports = function(Blockly) {
       return false;
     }
     return originalFlyoutDrag.call(this);
+  };
+
+  // Finish a sorting gesture at the same point Blockly normally finishes a
+  // flyout drag.  No temporary block was created (the guard above prevented
+  // it), so only the list order changes when the pointer is released inside
+  // the custom-block flyout.
+  var originalGestureHandleUp = Blockly.Gesture.prototype.handleUp;
+  Blockly.Gesture.prototype.handleUp = function(event) {
+    var flyout = this.flyout_;
+    var workspace = flyout && flyout.targetWorkspace_;
+    var source = this.targetBlock_;
+    var isProcedureSort = workspace && !workspace.procedureOrderLocked_ &&
+      source && source.type === 'procedures_call' &&
+      this.hasExceededDragRadius_;
+    if (isProcedureSort) {
+      var target = findProcedureDropTarget(flyout, event);
+      if (target && target.block !== source) {
+        Blockly.Procedures.reorderProcedure_(workspace, source.getProcCode(),
+          target.block.getProcCode(), target.insertAfter);
+      }
+    }
+    return originalGestureHandleUp.call(this, event);
   };
 
   var flyoutCategory = Blockly.Procedures.flyoutCategory;
