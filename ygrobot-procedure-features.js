@@ -297,6 +297,15 @@ module.exports = function(Blockly) {
       if (target && target.block !== source) {
         Blockly.Procedures.reorderProcedure_(workspace, source.getProcCode(),
           target.block.getProcCode(), target.insertAfter);
+      } else {
+        // Some Electron/Blockly SVG combinations report the flyout group's
+        // screen rectangle as empty. In that case a clear vertical drag still
+        // has an unambiguous meaning: move this entry one place up or down.
+        var delta = this.currentDragDeltaXY_;
+        if (delta && Math.abs(delta.y) > Math.abs(delta.x)) {
+          Blockly.Procedures.moveProcedure_(workspace, source.getProcCode(),
+            delta.y < 0 ? -1 : 1);
+        }
       }
     }
     return originalGestureHandleUp.call(this, event);
