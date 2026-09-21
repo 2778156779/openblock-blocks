@@ -14,24 +14,27 @@ module.exports = function(Blockly) {
   var procedureUtils = Blockly.ScratchBlocks.ProcedureUtils;
 
   /**
-   * The procedure body is connected below the prototype block inside the
-   * definition's statement input. Blockly's ordinary collapse operation hides
-   * the prototype but not the separate SVG groups of its downstream stack.
-   * Keep those groups in sync so a folded definition hides its whole body.
+   * Make every collapse entry point behave correctly for a procedure
+   * definition, including Blockly's built-in "Collapse Block" command.
+   * The normal implementation hides only the direct input child; procedure
+   * bodies continue below that child as separate SVG groups.
    */
-  var setProcedureDefinitionCollapsed = function(definition, collapsed) {
-    definition.setCollapsed(collapsed);
-    var input = definition.getInput('custom_block');
-    var prototype = input && input.connection && input.connection.targetBlock();
-    if (!prototype) return;
-    var descendants = prototype.getDescendants(false);
+  var originalSetCollapsed = Blockly.BlockSvg.prototype.setCollapsed;
+  Blockly.BlockSvg.prototype.setCollapsed = function(collapsed) {
+    originalSetCollapsed.call(this, collapsed);
+    if (this.type !== Blockly.PROCEDURES_DEFINITION_BLOCK_TYPE) return;
+    var descendants = this.getDescendants(false);
     for (var i = 0; i < descendants.length; i++) {
       var descendant = descendants[i];
+      if (descendant === this) continue;
       var svgRoot = descendant.getSvgRoot && descendant.getSvgRoot();
       if (svgRoot) svgRoot.style.display = collapsed ? 'none' : 'block';
-      if (collapsed) descendant.rendered = false;
     }
-    if (!collapsed && definition.rendered) definition.render();
+    if (!collapsed && this.rendered) this.render();
+  };
+
+  var setProcedureDefinitionCollapsed = function(definition, collapsed) {
+    definition.setCollapsed(collapsed);
   };
 
   var callerMutationToDom = procedureUtils.callerMutationToDom;
