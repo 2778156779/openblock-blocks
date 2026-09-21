@@ -145,7 +145,7 @@ module.exports = function(Blockly) {
   };
 
   var definitionMenu = Blockly.ScratchBlocks.VerticalExtensions
-    .PROCEDURE_DEFINITION_CONTEXTMENU;
+    .PROCEDURE_DEF_CONTEXTMENU;
   var originalDefinitionMenu = definitionMenu.customContextMenu;
   definitionMenu.customContextMenu = function(menuOptions) {
     originalDefinitionMenu.call(this, menuOptions);
