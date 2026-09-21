@@ -14,6 +14,20 @@ module.exports = function(Blockly) {
   var procedureUtils = Blockly.ScratchBlocks.ProcedureUtils;
 
   /**
+   * A procedure prototype holds the mutation XML, while its parent definition
+   * block draws the visible outer header. Apply the same colour to both.
+   */
+  var applyProcedureColour = function(block, colour) {
+    block.procedureColour_ = colour;
+    block.setColour(colour);
+    var parent = block.getParent && block.getParent();
+    if (parent && parent.type === Blockly.PROCEDURES_DEFINITION_BLOCK_TYPE) {
+      parent.procedureColour_ = colour;
+      parent.setColour(colour);
+    }
+  };
+
+  /**
    * Make every collapse entry point behave correctly for a procedure
    * definition, including Blockly's built-in "Collapse Block" command.
    * A procedure's prototype is its visible header: it contains the name and
@@ -96,11 +110,22 @@ module.exports = function(Blockly) {
   var definitionDomToMutation = procedureUtils.definitionDomToMutation;
   procedureUtils.definitionDomToMutation = function(mutation) {
     definitionDomToMutation.call(this, mutation);
-    this.procedureColour_ = mutation.getAttribute('colour') || DEFAULT_COLOUR;
+    var colour = mutation.getAttribute('colour') || DEFAULT_COLOUR;
+    applyProcedureColour(this, colour);
     this.procedureOrder_ = mutation.hasAttribute('order') ?
       Number(mutation.getAttribute('order')) : undefined;
-    this.setColour(this.procedureColour_);
   };
+
+  // Blockly copies these function references when block definitions are
+  // registered. Rebind the real block types after installing our overrides;
+  // changing ProcedureUtils alone would leave existing blocks on the old
+  // pink-only deserializers.
+  Blockly.Blocks.procedures_call.mutationToDom = procedureUtils.callerMutationToDom;
+  Blockly.Blocks.procedures_call.domToMutation = procedureUtils.callerDomToMutation;
+  Blockly.Blocks.procedures_prototype.mutationToDom = procedureUtils.definitionMutationToDom;
+  Blockly.Blocks.procedures_prototype.domToMutation = procedureUtils.definitionDomToMutation;
+  Blockly.Blocks.procedures_declaration.mutationToDom = procedureUtils.definitionMutationToDom;
+  Blockly.Blocks.procedures_declaration.domToMutation = procedureUtils.definitionDomToMutation;
 
   Blockly.Procedures.sortProcedureMutations_ = function(mutations) {
     return mutations.slice().sort(function(a, b) {
@@ -183,6 +208,14 @@ module.exports = function(Blockly) {
         mutation.setAttribute('order', Blockly.Procedures.getNextOrder_(workspace));
       }
       callback(mutation);
+      if (mutation) {
+        var definition = Blockly.Procedures.getDefineBlock(
+          mutation.getAttribute('proccode'), workspace);
+        if (definition) {
+          applyProcedureColour(definition,
+            mutation.getAttribute('colour') || DEFAULT_COLOUR);
+        }
+      }
     };
   };
 
