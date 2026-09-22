@@ -280,6 +280,22 @@ module.exports = function(Blockly) {
     return originalFlyoutDrag.call(this);
   };
 
+  var originalFlyoutWorkspaceDrag = Blockly.Gesture.prototype
+    .updateIsDraggingWorkspace_;
+  Blockly.Gesture.prototype.updateIsDraggingWorkspace_ = function() {
+    var flyout = this.flyout_;
+    var workspace = flyout && flyout.targetWorkspace_;
+    var block = this.targetBlock_;
+    // After a sorting drag is prevented from creating a new block, Blockly
+    // normally treats it as a flyout-scroll gesture. Keep that gesture idle;
+    // handleUp below will use its drag delta to change the procedure order.
+    if (workspace && !workspace.procedureOrderLocked_ && block &&
+        block.type === 'procedures_call') {
+      return;
+    }
+    return originalFlyoutWorkspaceDrag.call(this);
+  };
+
   // Finish a sorting gesture at the same point Blockly normally finishes a
   // flyout drag.  No temporary block was created (the guard above prevented
   // it), so only the list order changes when the pointer is released inside
