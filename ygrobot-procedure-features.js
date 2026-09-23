@@ -245,36 +245,17 @@ module.exports = function(Blockly) {
     return closest;
   };
 
-  // A normal flyout drag creates a block in the workspace.  While custom
-  // procedure sorting is unlocked, intercept only procedure call blocks and
-  // use their drop position inside the flyout to update the saved order.
-  var originalFlyoutBlockMouseDown = Blockly.Flyout.prototype.blockMouseDown_;
-  Blockly.Flyout.prototype.blockMouseDown_ = function(block) {
-    var flyout = this;
-    var originalHandler = originalFlyoutBlockMouseDown.call(this, block);
-    return function(event) {
-      var workspace = flyout.targetWorkspace_;
-      var canReorder = block.type === 'procedures_call' && workspace &&
-        !workspace.procedureOrderLocked_;
-      if (!canReorder) return originalHandler(event);
-
-      // Use Blockly's own gesture lifecycle.  It owns flyout scrolling and
-      // deletion handling, so a parallel document-level mouse listener can
-      // otherwise lose the mouse-up event to Blockly.
-      return originalHandler(event);
-    };
-  };
-
-  // `blockMouseDown_` is the normal entry point above. This gesture-level
-  // guard covers Blockly's background listener too, ensuring that unlocked
-  // procedure entries can never be copied into the coding workspace.
+  // A vertical drag sorts the unlocked list; a drag towards the coding
+  // workspace keeps Blockly's normal copy behaviour in either lock state.
   var originalFlyoutDrag = Blockly.Gesture.prototype.updateIsDraggingFromFlyout_;
   Blockly.Gesture.prototype.updateIsDraggingFromFlyout_ = function() {
     var flyout = this.flyout_;
     var workspace = flyout && flyout.targetWorkspace_;
     var block = this.targetBlock_;
-    if (workspace && !workspace.procedureOrderLocked_ && block &&
-        block.type === 'procedures_call') {
+    if (workspace && workspace.procedureOrderLocked_ === false && block &&
+        block.type === 'procedures_call' &&
+        !flyout.isDragTowardWorkspace(this.currentDragDeltaXY_)) {
+      this.procedureSort_ = true;
       return false;
     }
     return originalFlyoutDrag.call(this);
@@ -283,48 +264,37 @@ module.exports = function(Blockly) {
   var originalFlyoutWorkspaceDrag = Blockly.Gesture.prototype
     .updateIsDraggingWorkspace_;
   Blockly.Gesture.prototype.updateIsDraggingWorkspace_ = function() {
-    var flyout = this.flyout_;
-    var workspace = flyout && flyout.targetWorkspace_;
-    var block = this.targetBlock_;
     // After a sorting drag is prevented from creating a new block, Blockly
     // normally treats it as a flyout-scroll gesture. Keep that gesture idle;
     // handleUp below will use its drag delta to change the procedure order.
-    if (workspace && !workspace.procedureOrderLocked_ && block &&
-        block.type === 'procedures_call') {
+    if (this.procedureSort_) {
       return;
     }
     return originalFlyoutWorkspaceDrag.call(this);
   };
 
-  // Finish a sorting gesture at the same point Blockly normally finishes a
-  // flyout drag.  No temporary block was created (the guard above prevented
-  // it), so only the list order changes when the pointer is released inside
-  // the custom-block flyout.
+  // Capture the destination while flyout blocks exist, then let Blockly
+  // dispose the gesture BEFORE changing the list. refreshToolboxSelection_
+  // refuses to refresh while workspace.currentGesture_ is still present.
   var originalGestureHandleUp = Blockly.Gesture.prototype.handleUp;
   Blockly.Gesture.prototype.handleUp = function(event) {
     var flyout = this.flyout_;
     var workspace = flyout && flyout.targetWorkspace_;
     var source = this.targetBlock_;
-    var isProcedureSort = workspace && !workspace.procedureOrderLocked_ &&
-      source && source.type === 'procedures_call' &&
-      this.hasExceededDragRadius_;
-    if (isProcedureSort) {
+    var drop = null;
+    if (this.procedureSort_ && workspace && source) {
       var target = findProcedureDropTarget(flyout, event);
       if (target && target.block !== source) {
-        Blockly.Procedures.reorderProcedure_(workspace, source.getProcCode(),
-          target.block.getProcCode(), target.insertAfter);
-      } else {
-        // Some Electron/Blockly SVG combinations report the flyout group's
-        // screen rectangle as empty. In that case a clear vertical drag still
-        // has an unambiguous meaning: move this entry one place up or down.
-        var delta = this.currentDragDeltaXY_;
-        if (delta && Math.abs(delta.y) > Math.abs(delta.x)) {
-          Blockly.Procedures.moveProcedure_(workspace, source.getProcCode(),
-            delta.y < 0 ? -1 : 1);
-        }
+        drop = {source: source.getProcCode(), target: target.block.getProcCode(),
+          after: target.insertAfter};
       }
     }
-    return originalGestureHandleUp.call(this, event);
+    var result = originalGestureHandleUp.call(this, event);
+    if (drop) {
+      Blockly.Procedures.reorderProcedure_(workspace, drop.source,
+        drop.target, drop.after);
+    }
+    return result;
   };
 
   var flyoutCategory = Blockly.Procedures.flyoutCategory;
