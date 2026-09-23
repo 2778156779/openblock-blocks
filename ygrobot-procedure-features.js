@@ -219,7 +219,9 @@ module.exports = function(Blockly) {
   };
 
   var findProcedureDropTarget = function(flyout, event) {
-    var flyoutSvg = flyout.svgGroup_;
+    // The background is the visible drop area; the SVG group can also include
+    // off-screen blocks from other categories in the scrolling flyout.
+    var flyoutSvg = flyout.svgBackground_ || flyout.svgGroup_;
     if (!flyoutSvg) return null;
     var flyoutRect = flyoutSvg.getBoundingClientRect();
     if (event.clientX < flyoutRect.left || event.clientX > flyoutRect.right ||
@@ -245,16 +247,88 @@ module.exports = function(Blockly) {
     return closest;
   };
 
-  // A vertical drag sorts the unlocked list; a drag towards the coding
-  // workspace keeps Blockly's normal copy behaviour in either lock state.
+  // The preview is a non-interactive SVG copy. The real flyout block stays in
+  // its slot so Blockly's connections and hit rectangles are not moved.
+  var showProcedureSortPreview = function(gesture, event) {
+    var visual = gesture.procedureSortVisual_;
+    if (!visual) {
+      var root = gesture.targetBlock_.getSvgRoot();
+      var rect = root.getBoundingClientRect();
+      var bbox = root.getBBox();
+      var doc = root.ownerDocument;
+      var preview = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      preview.setAttribute('class', 'blocklySvg ygrobotProcedureDragPreview');
+      preview.setAttribute('aria-hidden', 'true');
+      preview.setAttribute('viewBox', [bbox.x, bbox.y, bbox.width, bbox.height].join(' '));
+      preview.style.cssText = 'position:fixed;pointer-events:none;overflow:visible;' +
+        'z-index:10000;margin:0;background:transparent;filter:drop-shadow(0 3px 3px #0004);';
+      preview.style.width = rect.width + 'px';
+      preview.style.height = rect.height + 'px';
+      var clone = root.cloneNode(true);
+      clone.removeAttribute('transform');
+      clone.removeAttribute('id');
+      var ids = clone.querySelectorAll('[id]');
+      for (var i = 0; i < ids.length; i++) ids[i].removeAttribute('id');
+      preview.appendChild(clone);
+      var marker = doc.createElement('div');
+      marker.className = 'ygrobotProcedureDropMarker';
+      marker.setAttribute('aria-hidden', 'true');
+      marker.style.cssText = 'position:fixed;pointer-events:none;height:3px;' +
+        'border-radius:2px;background:#3373cc;z-index:10001;display:none;';
+      doc.body.appendChild(preview);
+      doc.body.appendChild(marker);
+      visual = gesture.procedureSortVisual_ = {
+        root: root, opacity: root.style.opacity, rect: rect,
+        preview: preview, marker: marker, doc: doc
+      };
+      root.style.opacity = '0.25';
+      visual.cancel = function() { gesture.cancel(); };
+      visual.keydown = function(e) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          gesture.cancel();
+        }
+      };
+      doc.addEventListener('keydown', visual.keydown, true);
+      doc.defaultView.addEventListener('blur', visual.cancel);
+    }
+    var delta = gesture.currentDragDeltaXY_;
+    visual.preview.style.left = (visual.rect.left + delta.x) + 'px';
+    visual.preview.style.top = (visual.rect.top + delta.y) + 'px';
+    var target = findProcedureDropTarget(gesture.flyout_, event);
+    visual.preview.style.opacity = target ? '0.95' : '0.45';
+    visual.marker.style.display = 'none';
+    if (target && target.block !== gesture.targetBlock_) {
+      var targetRect = target.block.getSvgRoot().getBoundingClientRect();
+      visual.marker.style.left = targetRect.left + 'px';
+      visual.marker.style.top = (target.insertAfter ? targetRect.bottom + 5 :
+        targetRect.top - 8) + 'px';
+      visual.marker.style.width = Math.max(targetRect.width, visual.rect.width) + 'px';
+      visual.marker.style.display = 'block';
+    }
+  };
+
+  var clearProcedureSortPreview = function(gesture) {
+    var visual = gesture.procedureSortVisual_;
+    if (!visual) return;
+    gesture.procedureSortVisual_ = null;
+    visual.root.style.opacity = visual.opacity;
+    visual.preview.remove();
+    visual.marker.remove();
+    visual.doc.removeEventListener('keydown', visual.keydown, true);
+    visual.doc.defaultView.removeEventListener('blur', visual.cancel);
+  };
+
+  // Unlocking selects sort-only mode in every direction. Only locked entries
+  // may create a call block in the coding workspace.
   var originalFlyoutDrag = Blockly.Gesture.prototype.updateIsDraggingFromFlyout_;
   Blockly.Gesture.prototype.updateIsDraggingFromFlyout_ = function() {
     var flyout = this.flyout_;
     var workspace = flyout && flyout.targetWorkspace_;
     var block = this.targetBlock_;
     if (workspace && workspace.procedureOrderLocked_ === false && block &&
-        block.type === 'procedures_call' &&
-        !flyout.isDragTowardWorkspace(this.currentDragDeltaXY_)) {
+        block.type === 'procedures_call') {
       this.procedureSort_ = true;
       return false;
     }
@@ -271,6 +345,24 @@ module.exports = function(Blockly) {
       return;
     }
     return originalFlyoutWorkspaceDrag.call(this);
+  };
+
+  var originalGestureHandleMove = Blockly.Gesture.prototype.handleMove;
+  Blockly.Gesture.prototype.handleMove = function(event) {
+    originalGestureHandleMove.call(this, event);
+    if (this.procedureSort_) showProcedureSortPreview(this, event);
+  };
+
+  var originalGestureIsDragging = Blockly.Gesture.prototype.isDragging;
+  Blockly.Gesture.prototype.isDragging = function() {
+    return !!this.procedureSort_ || originalGestureIsDragging.call(this);
+  };
+
+  var originalGestureDispose = Blockly.Gesture.prototype.dispose;
+  Blockly.Gesture.prototype.dispose = function() {
+    clearProcedureSortPreview(this);
+    this.procedureSort_ = false;
+    return originalGestureDispose.call(this);
   };
 
   // Capture the destination while flyout blocks exist, then let Blockly
